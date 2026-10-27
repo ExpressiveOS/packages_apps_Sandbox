@@ -15,8 +15,6 @@
  */
 package com.android.axion.sandbox.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -37,7 +35,6 @@ import androidx.compose.material.icons.outlined.SettingsBackupRestore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.android.axion.compose.preferences.BasePreference
@@ -383,18 +380,12 @@ private fun PrivateSectionBehaviorSection(
 
 @Composable
 private fun AboutSection() {
-    val context = LocalContext.current
     PreferenceGroup(title = stringResource(R.string.settings_about_title)) {
         item {
-            ClickablePreference(
+            BasePreference(
                 title = stringResource(R.string.settings_version),
                 summary = stringResource(R.string.settings_version_value),
                 icon = Icons.Outlined.Info,
-                showExternalIcon = true,
-                onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Evolution-X/packages_apps_Sandbox"))
-                    context.startActivity(intent)
-                }
             )
         }
     }
