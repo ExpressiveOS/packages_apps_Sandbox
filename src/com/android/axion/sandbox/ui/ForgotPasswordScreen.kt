@@ -13,26 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+
 package com.android.axion.sandbox.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,53 +48,63 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import com.android.axion.compose.expressive.ExpressiveMorphButton
+import com.android.axion.compose.expressive.ExpressiveMorphContainer
+import com.android.axion.compose.expressive.ExpressiveShapePreset
+import com.android.axion.compose.expressive.rememberExpressiveHaptics
 import com.android.axion.compose.preferences.BasePreference
+import com.android.axion.compose.preferences.ExpressiveShapes
 import com.android.axion.compose.preferences.PreferenceGroup
+import com.android.axion.compose.preferences.dialogWidth
 import com.android.axion.compose.scaffold.AxionScaffold
 import com.android.axion.sandbox.R
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ForgotPasswordScreen(
     securityQuestion: String,
     onAnswerSubmit: (String) -> Boolean,
     onSuccess: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
 ) {
+    val haptics = rememberExpressiveHaptics()
     var answer by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
     var showConfirmDialog by remember { mutableStateOf(false) }
 
     AxionScaffold(
         title = stringResource(R.string.forgot_password_title),
-        onBackClick = onBack
+        onBackClick = onBack,
+        collapsedByDefault = false,
+        containerColor = MaterialTheme.colorScheme.surface,
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = stringResource(R.string.forgot_password_description),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             PreferenceGroup {
                 item {
                     BasePreference(
                         title = stringResource(R.string.recovery_question_label),
-                        summary = securityQuestion
+                        summary = securityQuestion,
+                        icon = Icons.Outlined.HelpOutline,
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             OutlinedTextField(
                 value = answer,
@@ -102,30 +118,39 @@ fun ForgotPasswordScreen(
                 isError = isError,
                 supportingText = if (isError) {
                     { Text(stringResource(R.string.forgot_password_error)) }
-                } else null,
-                shape = MaterialTheme.shapes.large
+                } else {
+                    null
+                },
+                shape = CircleShape,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Button(
+            ExpressiveMorphButton(
                 onClick = {
                     if (onAnswerSubmit(answer)) {
+                        haptics.performConfirm()
                         showConfirmDialog = true
                     } else {
+                        haptics.performBoundaryBump()
                         isError = true
                     }
                 },
+                enabled = answer.isNotBlank(),
+                selected = true,
+                restingPreset = ExpressiveShapePreset.PILL,
+                pressedPreset = ExpressiveShapePreset.SQUIRCLE,
+                selectedPreset = ExpressiveShapePreset.PILL,
+                hapticOnClick = false,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                enabled = answer.isNotBlank(),
-                shape = MaterialTheme.shapes.extraLarge
+                    .height(54.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.forgot_password_verify),
-                    style = MaterialTheme.typography.titleMedium
-                )
+                Text(text = stringResource(R.string.forgot_password_verify))
             }
         }
     }
@@ -133,43 +158,72 @@ fun ForgotPasswordScreen(
     if (showConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
+            shape = ExpressiveShapes.extraLarge,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.width(dialogWidth()),
             icon = {
-                Icon(
-                    imageVector = Icons.Filled.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
+                ExpressiveMorphContainer(
+                    active = true,
+                    inactivePreset = ExpressiveShapePreset.COOKIE_7,
+                    activePreset = ExpressiveShapePreset.COOKIE_7,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.size(56.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Warning,
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
             },
             title = {
                 Text(
                     text = stringResource(R.string.forgot_password_reset_title),
-                    textAlign = TextAlign.Center
+                    style = MaterialTheme.typography.headlineSmallEmphasized,
+                    textAlign = TextAlign.Center,
                 )
             },
             text = {
                 Text(
                     text = stringResource(R.string.forgot_password_reset_message),
-                    textAlign = TextAlign.Center
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                 )
             },
             confirmButton = {
-                Button(
+                ExpressiveMorphButton(
                     onClick = {
                         showConfirmDialog = false
                         onSuccess()
                     },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
+                    selected = true,
+                    restingPreset = ExpressiveShapePreset.PILL,
+                    pressedPreset = ExpressiveShapePreset.SQUIRCLE,
+                    selectedPreset = ExpressiveShapePreset.PILL,
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
                 ) {
-                    Text(stringResource(R.string.action_reset))
+                    Text(text = stringResource(R.string.action_reset))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) {
-                    Text(stringResource(R.string.action_cancel))
+                OutlinedButton(
+                    onClick = {
+                        haptics.performStepTick()
+                        showConfirmDialog = false
+                    },
+                    shape = CircleShape,
+                ) {
+                    Text(
+                        text = stringResource(R.string.action_cancel),
+                        style = MaterialTheme.typography.labelLargeEmphasized,
+                    )
                 }
-            }
+            },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
         )
     }
 }

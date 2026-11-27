@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package com.android.axion.sandbox
 
 import android.hardware.biometrics.BiometricManager
@@ -25,35 +27,45 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
+import com.android.axion.compose.expressive.ExpressiveBlurSurface
+import com.android.axion.compose.expressive.ExpressiveWavyCircularProgress
+import com.android.axion.compose.preferences.ExpressiveShapes
 import com.android.axion.sandbox.io.BackupManager
 import com.android.axion.sandbox.io.VaultAccessController
-import com.android.axion.sandbox.security.LockedAppBehavior
 import com.android.axion.sandbox.security.PrivateSectionBehavior
-import com.android.axion.sandbox.security.SecurityType
 import com.android.axion.sandbox.security.SandboxSecurityManager
+import com.android.axion.sandbox.security.SecurityType
+import com.android.axion.sandbox.ui.ExpressivePasswordScreen
+import com.android.axion.sandbox.ui.ExpressivePatternScreen
+import com.android.axion.sandbox.ui.ExpressivePinScreen
 import com.android.axion.sandbox.ui.ForgotPasswordScreen
-import com.android.axion.sandbox.ui.LockScreen
-import com.android.axion.sandbox.ui.PasswordScreen
-import com.android.axion.sandbox.ui.PatternScreen
 import com.android.axion.sandbox.ui.SandboxApp
 import com.android.axion.sandbox.ui.SecurityQuestionSetupScreen
 import com.android.axion.sandbox.ui.SecuritySetupScreen
@@ -65,33 +77,38 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var securityManager: SandboxSecurityManager
     private lateinit var backupManager: BackupManager
+    private val backupOperationLabel = mutableStateOf<String?>(null)
 
     private val createBackupLauncher = registerForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
+        ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
         uri?.let {
             lifecycleScope.launch {
-                val success = backupManager.exportConfig(it)
-                if (success) {
-                    Toast.makeText(this@MainActivity, R.string.backup_success, Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@MainActivity, R.string.backup_error, Toast.LENGTH_SHORT).show()
+                backupOperationLabel.value = getString(R.string.settings_backup_applist)
+                val success = try {
+                    backupManager.exportConfig(it)
+                } finally {
+                    backupOperationLabel.value = null
                 }
+                val resId = if (success) R.string.backup_success else R.string.backup_error
+                Toast.makeText(this@MainActivity, resId, Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     private val restoreBackupLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.OpenDocument(),
     ) { uri ->
         uri?.let {
             lifecycleScope.launch {
-                val success = backupManager.importConfig(it)
-                if (success) {
-                    Toast.makeText(this@MainActivity, R.string.restore_success, Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@MainActivity, R.string.restore_error, Toast.LENGTH_SHORT).show()
+                backupOperationLabel.value = getString(R.string.settings_restore_applist)
+                val success = try {
+                    backupManager.importConfig(it)
+                } finally {
+                    backupOperationLabel.value = null
                 }
+                val resId = if (success) R.string.restore_success else R.string.restore_error
+                Toast.makeText(this@MainActivity, resId, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -108,7 +125,7 @@ class MainActivity : ComponentActivity() {
             SandboxTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.surfaceContainer
+                    color = MaterialTheme.colorScheme.surface,
                 ) {
                     SandboxNavigation(
                         securityManager = securityManager,
@@ -120,8 +137,36 @@ class MainActivity : ComponentActivity() {
                         },
                         onRestoreAppList = {
                             restoreBackupLauncher.launch(arrayOf("application/json"))
-                        }
+                        },
                     )
+
+                    backupOperationLabel.value?.let { message ->
+                        Dialog(onDismissRequest = {}) {
+                            ExpressiveBlurSurface(
+                                shape = ExpressiveShapes.extraLarge,
+                                tintColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                applyDialogWindowBlur = true,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .widthIn(min = 260.dp)
+                                        .padding(horizontal = 24.dp, vertical = 22.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                ) {
+                                    ExpressiveWavyCircularProgress(
+                                        size = 44.dp,
+                                        strokeWidth = 4.dp,
+                                    )
+                                    Text(
+                                        text = message,
+                                        style = MaterialTheme.typography.titleMediumEmphasized,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -133,7 +178,7 @@ class MainActivity : ComponentActivity() {
             .setNegativeButton(getString(R.string.action_cancel), mainExecutor) { _, _ -> }
             .setAllowedAuthenticators(
                 BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.BIOMETRIC_WEAK
+                    BiometricManager.Authenticators.BIOMETRIC_WEAK,
             )
             .build()
 
@@ -141,11 +186,13 @@ class MainActivity : ComponentActivity() {
             CancellationSignal(),
             mainExecutor,
             object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
+                override fun onAuthenticationSucceeded(
+                    result: BiometricPrompt.AuthenticationResult?,
+                ) {
                     super.onAuthenticationSucceeded(result)
                     onSuccess()
                 }
-            }
+            },
         )
     }
 }
@@ -160,7 +207,7 @@ enum class SandboxScreen {
     SETTINGS_RECOVERY,
     VERIFY_CURRENT_CREDENTIAL,
     CHANGE_SECURITY,
-    FORGOT_PASSWORD
+    FORGOT_PASSWORD,
 }
 
 @Composable
@@ -168,13 +215,15 @@ fun SandboxNavigation(
     securityManager: SandboxSecurityManager,
     onShowBiometricPrompt: (() -> Unit) -> Unit,
     onBackupAppList: () -> Unit,
-    onRestoreAppList: () -> Unit
+    onRestoreAppList: () -> Unit,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
 
-    var currentScreen by rememberSaveable { 
-        mutableStateOf(if (securityManager.isSetup()) SandboxScreen.MAIN else SandboxScreen.SETUP_TYPE_SELECTOR) 
+    var currentScreen by rememberSaveable {
+        mutableStateOf(
+            if (securityManager.isSetup()) SandboxScreen.MAIN else SandboxScreen.SETUP_TYPE_SELECTOR,
+        )
     }
     var selectedSecurityType by rememberSaveable { mutableStateOf(SecurityType.PIN) }
     var pendingSecurityType by rememberSaveable { mutableStateOf<SecurityType?>(null) }
@@ -198,7 +247,6 @@ fun SandboxNavigation(
     var hasSecurityQuestion by remember { mutableStateOf(securityManager.hasSecurityQuestion()) }
     var forgotPasswordReturnScreen by rememberSaveable { mutableStateOf(SandboxScreen.UNLOCK_PRIVATE) }
 
-    val currentScreenState = rememberUpdatedState(currentScreen)
     val currentPrivateBehaviorState = rememberUpdatedState(currentPrivateBehavior)
 
     LaunchedEffect(isPrivateUnlocked) {
@@ -215,7 +263,7 @@ fun SandboxNavigation(
                 lastPauseTime = System.currentTimeMillis()
             } else if (event == Lifecycle.Event.ON_RESUME && securityManager.isSetup()) {
                 val currentTime = System.currentTimeMillis()
-                val isGracePeriodExpired = (currentTime - lastPauseTime) > 30000 // 30 second grace period
+                val isGracePeriodExpired = (currentTime - lastPauseTime) > 30000
 
                 if (isGracePeriodExpired && isPrivateUnlocked) {
                     val privateBehavior = currentPrivateBehaviorState.value
@@ -224,12 +272,13 @@ fun SandboxNavigation(
                         isPrivateAreaExpanded = false
                     }
                 }
-                
-                // Reset state after check
+
                 isPickingFiles = false
 
-                if (currentPrivateBehaviorState.value == PrivateSectionBehavior.TIMEOUT
-                    && securityManager.isTimeoutExpired()) {
+                if (
+                    currentPrivateBehaviorState.value == PrivateSectionBehavior.TIMEOUT &&
+                    securityManager.isTimeoutExpired()
+                ) {
                     isPrivateUnlocked = false
                     isPrivateAreaExpanded = false
                 } else if (isPrivateUnlocked) {
@@ -245,7 +294,10 @@ fun SandboxNavigation(
     }
 
     LaunchedEffect(currentScreen) {
-        if (currentScreen == SandboxScreen.SETUP_CREDENTIAL || currentScreen == SandboxScreen.CHANGE_SECURITY) {
+        if (
+            currentScreen == SandboxScreen.SETUP_CREDENTIAL ||
+            currentScreen == SandboxScreen.CHANGE_SECURITY
+        ) {
             if (!isConfirmStep) {
                 firstCredential = null
             }
@@ -279,57 +331,76 @@ fun SandboxNavigation(
             }
 
             LaunchedEffect(Unit) {
-                if (currentBiometricEnabled && securityManager.isBiometricAvailable() && currentPreferBiometric) {
+                if (
+                    currentBiometricEnabled &&
+                    securityManager.isBiometricAvailable() &&
+                    currentPreferBiometric
+                ) {
                     onShowBiometricPrompt(onUnlockSuccess)
                 }
             }
 
+            val activeBioType = if (
+                currentBiometricEnabled &&
+                securityManager.isBiometricAvailable()
+            ) {
+                securityManager.getBiometricType()
+            } else {
+                SandboxSecurityManager.BiometricType.NONE
+            }
+
             when (securityType) {
                 SecurityType.PIN -> {
-                    LockScreen(
+                    ExpressivePinScreen(
                         isSetup = false,
                         onUnlock = onUnlockSuccess,
                         onPinEntered = { pin -> securityManager.verifyCredential(pin) },
-                        biometricType = if (currentBiometricEnabled && securityManager.isBiometricAvailable())
-                            securityManager.getBiometricType() else SandboxSecurityManager.BiometricType.NONE,
+                        biometricType = activeBioType,
                         onBiometricClick = { onShowBiometricPrompt(onUnlockSuccess) },
                         onBack = { currentScreen = SandboxScreen.MAIN },
                         onForgotPassword = if (securityManager.hasSecurityQuestion()) {
                             { currentScreen = SandboxScreen.FORGOT_PASSWORD }
-                        } else null
+                        } else {
+                            null
+                        },
                     )
                 }
+
                 SecurityType.PASSWORD -> {
-                    PasswordScreen(
+                    ExpressivePasswordScreen(
                         isSetup = false,
                         onUnlock = onUnlockSuccess,
                         onPasswordEntered = { password -> securityManager.verifyCredential(password) },
-                        biometricType = if (currentBiometricEnabled && securityManager.isBiometricAvailable())
-                            securityManager.getBiometricType() else SandboxSecurityManager.BiometricType.NONE,
+                        biometricType = activeBioType,
                         onBiometricClick = { onShowBiometricPrompt(onUnlockSuccess) },
                         onBack = { currentScreen = SandboxScreen.MAIN },
                         onForgotPassword = if (securityManager.hasSecurityQuestion()) {
                             { currentScreen = SandboxScreen.FORGOT_PASSWORD }
-                        } else null,
+                        } else {
+                            null
+                        },
                         requestInitialFocus = !currentPreferBiometric ||
                             !currentBiometricEnabled ||
-                            !securityManager.isBiometricAvailable()
+                            !securityManager.isBiometricAvailable(),
                     )
                 }
+
                 SecurityType.PATTERN -> {
-                    PatternScreen(
+                    ExpressivePatternScreen(
                         isSetup = false,
                         onUnlock = onUnlockSuccess,
                         onPatternEntered = { pattern -> securityManager.verifyPattern(pattern) },
-                        biometricType = if (currentBiometricEnabled && securityManager.isBiometricAvailable())
-                            securityManager.getBiometricType() else SandboxSecurityManager.BiometricType.NONE,
+                        biometricType = activeBioType,
                         onBiometricClick = { onShowBiometricPrompt(onUnlockSuccess) },
                         onBack = { currentScreen = SandboxScreen.MAIN },
                         onForgotPassword = if (securityManager.hasSecurityQuestion()) {
                             { currentScreen = SandboxScreen.FORGOT_PASSWORD }
-                        } else null
+                        } else {
+                            null
+                        },
                     )
                 }
+
                 SecurityType.NONE -> {
                     isPrivateUnlocked = true
                     isPrivateAreaExpanded = true
@@ -349,7 +420,7 @@ fun SandboxNavigation(
                 onSkip = {
                     currentScreen = SandboxScreen.MAIN
                 },
-                showSkip = securityManager.isSetup()
+                showSkip = securityManager.isSetup(),
             )
         }
 
@@ -367,7 +438,7 @@ fun SandboxNavigation(
 
             when (selectedSecurityType) {
                 SecurityType.PIN -> {
-                    LockScreen(
+                    ExpressivePinScreen(
                         isSetup = true,
                         onUnlock = {
                             if (!isConfirmStep) {
@@ -387,11 +458,12 @@ fun SandboxNavigation(
                             }
                         },
                         confirmPin = if (isConfirmStep) firstCredential as? String else null,
-                        onBack = handleBack
+                        onBack = handleBack,
                     )
                 }
+
                 SecurityType.PASSWORD -> {
-                    PasswordScreen(
+                    ExpressivePasswordScreen(
                         isSetup = true,
                         onUnlock = {
                             if (!isConfirmStep) {
@@ -411,11 +483,12 @@ fun SandboxNavigation(
                             }
                         },
                         confirmPassword = if (isConfirmStep) firstCredential as? String else null,
-                        onBack = handleBack
+                        onBack = handleBack,
                     )
                 }
+
                 SecurityType.PATTERN -> {
-                    PatternScreen(
+                    ExpressivePatternScreen(
                         isSetup = true,
                         onUnlock = {
                             if (!isConfirmStep) {
@@ -439,10 +512,13 @@ fun SandboxNavigation(
                         confirmPattern = if (isConfirmStep) {
                             @Suppress("UNCHECKED_CAST")
                             firstCredential as? List<Int>
-                        } else null,
-                        onBack = handleBack
+                        } else {
+                            null
+                        },
+                        onBack = handleBack,
                     )
                 }
+
                 SecurityType.NONE -> {
                     currentScreen = SandboxScreen.MAIN
                 }
@@ -473,7 +549,7 @@ fun SandboxNavigation(
                 selectedTabIndex = selectedTabIndex,
                 onTabIndexChange = { index -> selectedTabIndex = index },
                 isPickingFiles = isPickingFiles,
-                onPickingFilesChange = { picking -> isPickingFiles = picking }
+                onPickingFilesChange = { picking -> isPickingFiles = picking },
             )
         }
 
@@ -542,7 +618,7 @@ fun SandboxNavigation(
                     currentScreen = SandboxScreen.FORGOT_PASSWORD
                 },
                 onBackupAppList = onBackupAppList,
-                onRestoreAppList = onRestoreAppList
+                onRestoreAppList = onRestoreAppList,
             )
         }
 
@@ -562,52 +638,61 @@ fun SandboxNavigation(
                 currentScreen = SandboxScreen.SETTINGS
             }
 
+            val activeBioType = if (
+                currentBiometricEnabled &&
+                securityManager.isBiometricAvailable()
+            ) {
+                securityManager.getBiometricType()
+            } else {
+                SandboxSecurityManager.BiometricType.NONE
+            }
+
             when (securityType) {
                 SecurityType.PIN -> {
-                    LockScreen(
+                    ExpressivePinScreen(
                         isSetup = false,
                         promptText = null,
                         onUnlock = onVerified,
                         onPinEntered = { pin -> securityManager.verifyCredential(pin) },
-                        biometricType = if (currentBiometricEnabled && securityManager.isBiometricAvailable())
-                            securityManager.getBiometricType() else SandboxSecurityManager.BiometricType.NONE,
+                        biometricType = activeBioType,
                         onBiometricClick = { onShowBiometricPrompt(onVerified) },
                         onBack = {
                             pendingSecurityType = null
                             currentScreen = SandboxScreen.SETTINGS
-                        }
+                        },
                     )
                 }
+
                 SecurityType.PASSWORD -> {
-                    PasswordScreen(
+                    ExpressivePasswordScreen(
                         isSetup = false,
                         promptText = null,
                         onUnlock = onVerified,
                         onPasswordEntered = { password -> securityManager.verifyCredential(password) },
-                        biometricType = if (currentBiometricEnabled && securityManager.isBiometricAvailable())
-                            securityManager.getBiometricType() else SandboxSecurityManager.BiometricType.NONE,
+                        biometricType = activeBioType,
                         onBiometricClick = { onShowBiometricPrompt(onVerified) },
                         onBack = {
                             pendingSecurityType = null
                             currentScreen = SandboxScreen.SETTINGS
-                        }
+                        },
                     )
                 }
+
                 SecurityType.PATTERN -> {
-                    PatternScreen(
+                    ExpressivePatternScreen(
                         isSetup = false,
                         promptText = null,
                         onUnlock = onVerified,
                         onPatternEntered = { pattern -> securityManager.verifyPattern(pattern) },
-                        biometricType = if (currentBiometricEnabled && securityManager.isBiometricAvailable())
-                            securityManager.getBiometricType() else SandboxSecurityManager.BiometricType.NONE,
+                        biometricType = activeBioType,
                         onBiometricClick = { onShowBiometricPrompt(onVerified) },
                         onBack = {
                             pendingSecurityType = null
                             currentScreen = SandboxScreen.SETTINGS
-                        }
+                        },
                     )
                 }
+
                 SecurityType.NONE -> {
                     selectedSecurityType = pendingSecurityType ?: SecurityType.PIN
                     pendingSecurityType = null
@@ -632,7 +717,7 @@ fun SandboxNavigation(
 
             when (selectedSecurityType) {
                 SecurityType.PIN -> {
-                    LockScreen(
+                    ExpressivePinScreen(
                         isSetup = true,
                         onUnlock = {
                             if (!isConfirmStep) {
@@ -652,11 +737,12 @@ fun SandboxNavigation(
                             }
                         },
                         confirmPin = if (isConfirmStep) firstCredential as? String else null,
-                        onBack = handleBack
+                        onBack = handleBack,
                     )
                 }
+
                 SecurityType.PASSWORD -> {
-                    PasswordScreen(
+                    ExpressivePasswordScreen(
                         isSetup = true,
                         onUnlock = {
                             if (!isConfirmStep) {
@@ -676,11 +762,12 @@ fun SandboxNavigation(
                             }
                         },
                         confirmPassword = if (isConfirmStep) firstCredential as? String else null,
-                        onBack = handleBack
+                        onBack = handleBack,
                     )
                 }
+
                 SecurityType.PATTERN -> {
-                    PatternScreen(
+                    ExpressivePatternScreen(
                         isSetup = true,
                         onUnlock = {
                             if (!isConfirmStep) {
@@ -704,10 +791,13 @@ fun SandboxNavigation(
                         confirmPattern = if (isConfirmStep) {
                             @Suppress("UNCHECKED_CAST")
                             firstCredential as? List<Int>
-                        } else null,
-                        onBack = handleBack
+                        } else {
+                            null
+                        },
+                        onBack = handleBack,
                     )
                 }
+
                 SecurityType.NONE -> {
                     currentScreen = SandboxScreen.SETTINGS
                 }
@@ -729,7 +819,7 @@ fun SandboxNavigation(
                     isPrivateAreaExpanded = true
                     securityManager.setLastUnlockTime()
                     currentScreen = SandboxScreen.MAIN
-                }
+                },
             )
         }
 
@@ -746,7 +836,7 @@ fun SandboxNavigation(
                 },
                 onBack = {
                     currentScreen = SandboxScreen.SETTINGS
-                }
+                },
             )
         }
 
@@ -778,7 +868,7 @@ fun SandboxNavigation(
                 },
                 onBack = {
                     currentScreen = forgotPasswordReturnScreen
-                }
+                },
             )
         }
     }

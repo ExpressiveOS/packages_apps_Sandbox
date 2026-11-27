@@ -13,17 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package com.android.axion.sandbox.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -34,51 +36,60 @@ import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.android.axion.compose.expressive.ExpressiveMorphContainer
+import com.android.axion.compose.expressive.ExpressiveShapePreset
+import com.android.axion.compose.expressive.rememberExpressiveHaptics
 import com.android.axion.compose.preferences.ClickablePreference
 import com.android.axion.compose.preferences.PreferenceGroup
 import com.android.axion.sandbox.R
 import com.android.axion.sandbox.security.SecurityType
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SecuritySetupScreen(
     onSecurityTypeSelected: (SecurityType) -> Unit,
     onSkip: () -> Unit = {},
-    showSkip: Boolean = true
+    showSkip: Boolean = true,
 ) {
+    val haptics = rememberExpressiveHaptics()
+    var emblemActive by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainer),
-        contentAlignment = Alignment.Center
+            .background(MaterialTheme.colorScheme.surface),
+        contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .padding(32.dp)
-                .widthIn(max = 400.dp)
+                .widthIn(max = 420.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
+            ExpressiveMorphContainer(
+                active = emblemActive,
+                inactivePreset = ExpressiveShapePreset.COOKIE_7,
+                activePreset = ExpressiveShapePreset.SOFT_BURST,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                onClick = { emblemActive = !emblemActive },
+                modifier = Modifier.size(84.dp),
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Security,
                     contentDescription = null,
                     modifier = Modifier.size(40.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
 
@@ -88,7 +99,7 @@ fun SecuritySetupScreen(
                 text = stringResource(R.string.setup_title),
                 style = MaterialTheme.typography.headlineMediumEmphasized,
                 color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -97,10 +108,10 @@ fun SecuritySetupScreen(
                 text = stringResource(R.string.setup_description),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
             )
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
             PreferenceGroup {
                 item {
@@ -108,7 +119,12 @@ fun SecuritySetupScreen(
                         title = stringResource(R.string.setup_pin_title),
                         summary = stringResource(R.string.setup_pin_description),
                         icon = Icons.Outlined.Pin,
-                        onClick = { onSecurityTypeSelected(SecurityType.PIN) }
+                        iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        iconBackgroundColor = MaterialTheme.colorScheme.primaryContainer,
+                        onClick = {
+                            haptics.performConfirm()
+                            onSecurityTypeSelected(SecurityType.PIN)
+                        },
                     )
                 }
                 item {
@@ -116,7 +132,12 @@ fun SecuritySetupScreen(
                         title = stringResource(R.string.setup_password_title),
                         summary = stringResource(R.string.setup_password_description),
                         icon = Icons.Outlined.Password,
-                        onClick = { onSecurityTypeSelected(SecurityType.PASSWORD) }
+                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        iconBackgroundColor = MaterialTheme.colorScheme.secondaryContainer,
+                        onClick = {
+                            haptics.performConfirm()
+                            onSecurityTypeSelected(SecurityType.PASSWORD)
+                        },
                     )
                 }
                 item {
@@ -124,7 +145,12 @@ fun SecuritySetupScreen(
                         title = stringResource(R.string.setup_pattern_title),
                         summary = stringResource(R.string.setup_pattern_description),
                         icon = Icons.Outlined.Pattern,
-                        onClick = { onSecurityTypeSelected(SecurityType.PATTERN) }
+                        iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                        iconBackgroundColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        onClick = {
+                            haptics.performConfirm()
+                            onSecurityTypeSelected(SecurityType.PATTERN)
+                        },
                     )
                 }
             }
@@ -132,13 +158,20 @@ fun SecuritySetupScreen(
             if (showSkip) {
                 Spacer(modifier = Modifier.height(24.dp))
 
-                TextButton(
-                    onClick = onSkip,
-                    modifier = Modifier.fillMaxWidth()
+                OutlinedButton(
+                    onClick = {
+                        haptics.performStepTick()
+                        onSkip()
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
                 ) {
                     Text(
                         text = stringResource(R.string.action_skip),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.labelLargeEmphasized,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

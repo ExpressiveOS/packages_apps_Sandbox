@@ -31,17 +31,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import com.android.axion.sandbox.security.SecurityType
+import androidx.compose.ui.res.stringResource
+import com.android.axion.compose.expressive.rememberExpressiveBlurActive
+import com.android.axion.compose.expressive.setupExpressiveWindowBlur
 import com.android.axion.sandbox.security.SandboxSecurityManager
-import com.android.axion.sandbox.ui.LockScreen
-import com.android.axion.sandbox.ui.PasswordScreen
-import com.android.axion.sandbox.ui.PatternScreen
+import com.android.axion.sandbox.security.SecurityType
+import com.android.axion.sandbox.ui.ExpressivePasswordScreen
+import com.android.axion.sandbox.ui.ExpressivePatternScreen
+import com.android.axion.sandbox.ui.ExpressivePinScreen
 import com.android.axion.sandbox.ui.theme.SandboxTheme
 
 class AuthenticateActivity : ComponentActivity() {
@@ -66,11 +70,14 @@ class AuthenticateActivity : ComponentActivity() {
 
         enableEdgeToEdge()
 
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                cancelAndFinish()
-            }
-        })
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    cancelAndFinish()
+                }
+            },
+        )
 
         resultIntent = Intent()
 
@@ -100,17 +107,30 @@ class AuthenticateActivity : ComponentActivity() {
             return
         }
 
-        val biometricType = if (securityManager.isBiometricEnabled() && securityManager.isBiometricAvailable()) {
-             securityManager.getBiometricType()
+        val biometricType = if (
+            securityManager.isBiometricEnabled() &&
+            securityManager.isBiometricAvailable()
+        ) {
+            securityManager.getBiometricType()
         } else {
-             SandboxSecurityManager.BiometricType.NONE
+            SandboxSecurityManager.BiometricType.NONE
         }
 
         setContent {
             SandboxTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.surfaceContainer
+                val blurActive = rememberExpressiveBlurActive()
+                LaunchedEffect(blurActive) {
+                    window?.setupExpressiveWindowBlur(enabled = blurActive)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            MaterialTheme.colorScheme.surfaceContainerLowest.copy(
+                                alpha = if (blurActive) 0.90f else 1.0f,
+                            ),
+                        ),
                 ) {
                     AuthenticateScreen(
                         securityManager = securityManager,
@@ -119,7 +139,7 @@ class AuthenticateActivity : ComponentActivity() {
                         onCancel = { cancelAndFinish() },
                         biometricType = biometricType,
                         isPreferBiometric = securityManager.isPreferBiometric(),
-                        onBiometricClick = { showBiometricPrompt() }
+                        onBiometricClick = { showBiometricPrompt() },
                     )
                 }
             }
@@ -139,7 +159,7 @@ class AuthenticateActivity : ComponentActivity() {
             .setNegativeButton(negativeButtonText, mainExecutor) { _, _ -> }
             .setAllowedAuthenticators(
                 BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.BIOMETRIC_WEAK
+                    BiometricManager.Authenticators.BIOMETRIC_WEAK,
             )
             .build()
 
@@ -147,20 +167,25 @@ class AuthenticateActivity : ComponentActivity() {
             CancellationSignal(),
             mainExecutor,
             object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
+                override fun onAuthenticationSucceeded(
+                    result: BiometricPrompt.AuthenticationResult?,
+                ) {
                     super.onAuthenticationSucceeded(result)
                     unlockAndFinish()
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
-                     super.onAuthenticationError(errorCode, errString)
-                     if (errorCode == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED ||
-                         errorCode == BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON) {
-                     } else {
-                         cancelAndFinish()
-                     }
+                    super.onAuthenticationError(errorCode, errString)
+                    if (
+                        errorCode == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED ||
+                        errorCode == BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON
+                    ) {
+                        // Stay on credential prompt
+                    } else {
+                        cancelAndFinish()
+                    }
                 }
-            }
+            },
         )
     }
 
@@ -170,9 +195,9 @@ class AuthenticateActivity : ComponentActivity() {
 
             addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
             )
 
             attributes = attributes?.apply {
@@ -278,7 +303,7 @@ fun AuthenticateScreen(
     onCancel: () -> Unit,
     biometricType: SandboxSecurityManager.BiometricType = SandboxSecurityManager.BiometricType.NONE,
     isPreferBiometric: Boolean = false,
-    onBiometricClick: () -> Unit = {}
+    onBiometricClick: () -> Unit = {},
 ) {
     LaunchedEffect(biometricType) {
         if (biometricType != SandboxSecurityManager.BiometricType.NONE && isPreferBiometric) {
@@ -287,40 +312,50 @@ fun AuthenticateScreen(
     }
 
     val securityType = securityManager.getSecurityType()
+    val prompt = stringResource(R.string.auth_prompt, appLabel)
 
     when (securityType) {
         SecurityType.PIN -> {
-            LockScreen(
+            ExpressivePinScreen(
                 isSetup = false,
+                promptText = prompt,
                 onUnlock = onSuccess,
                 onPinEntered = { pin -> securityManager.verifyCredential(pin) },
                 onBack = onCancel,
                 biometricType = biometricType,
-                onBiometricClick = onBiometricClick
+                onBiometricClick = onBiometricClick,
+                frostedSheet = true,
             )
         }
+
         SecurityType.PASSWORD -> {
-            PasswordScreen(
+            ExpressivePasswordScreen(
                 isSetup = false,
+                promptText = prompt,
                 onUnlock = onSuccess,
                 onPasswordEntered = { password -> securityManager.verifyCredential(password) },
                 onBack = onCancel,
                 biometricType = biometricType,
                 onBiometricClick = onBiometricClick,
                 requestInitialFocus = biometricType == SandboxSecurityManager.BiometricType.NONE ||
-                    !isPreferBiometric
+                    !isPreferBiometric,
+                frostedSheet = true,
             )
         }
+
         SecurityType.PATTERN -> {
-            PatternScreen(
+            ExpressivePatternScreen(
                 isSetup = false,
+                promptText = prompt,
                 onUnlock = onSuccess,
                 onPatternEntered = { pattern -> securityManager.verifyPattern(pattern) },
                 onBack = onCancel,
                 biometricType = biometricType,
-                onBiometricClick = onBiometricClick
+                onBiometricClick = onBiometricClick,
+                frostedSheet = true,
             )
         }
+
         SecurityType.NONE -> {
             LaunchedEffect(Unit) {
                 onSuccess()
