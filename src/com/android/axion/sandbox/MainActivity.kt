@@ -17,6 +17,7 @@
 
 package com.android.axion.sandbox
 
+import android.app.Activity
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Bundle
@@ -410,6 +411,16 @@ fun SandboxNavigation(
         }
 
         SandboxScreen.SETUP_TYPE_SELECTOR -> {
+            val handleSetupBack: () -> Unit = {
+                if (securityManager.isSetup()) {
+                    currentScreen = SandboxScreen.MAIN
+                } else {
+                    (context as? Activity)?.finish()
+                }
+            }
+
+            BackHandler { handleSetupBack() }
+
             SecuritySetupScreen(
                 onSecurityTypeSelected = { type ->
                     selectedSecurityType = type
@@ -420,6 +431,7 @@ fun SandboxNavigation(
                 onSkip = {
                     currentScreen = SandboxScreen.MAIN
                 },
+                onBack = handleSetupBack,
                 showSkip = securityManager.isSetup(),
             )
         }

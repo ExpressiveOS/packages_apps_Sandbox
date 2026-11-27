@@ -19,7 +19,10 @@ package com.android.axion.sandbox.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -47,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.android.axion.compose.preferences.BasePreference
@@ -85,6 +89,7 @@ fun SettingsScreen(
     onBackupAppList: () -> Unit,
     onRestoreAppList: () -> Unit,
 ) {
+    val layoutDirection = LocalLayoutDirection.current
     val timeoutOptions = listOf(
         "15" to stringResource(R.string.timeout_15s),
         "30" to stringResource(R.string.timeout_30s),
@@ -100,13 +105,15 @@ fun SettingsScreen(
         containerColor = MaterialTheme.colorScheme.surface,
     ) { paddingValues ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = paddingValues.calculateStartPadding(layoutDirection) + 16.dp,
+                end = paddingValues.calculateEndPadding(layoutDirection) + 16.dp,
+                top = paddingValues.calculateTopPadding() + 4.dp,
+                bottom = paddingValues.calculateBottomPadding() + 28.dp,
+            ),
         ) {
             item {
-                Spacer(modifier = Modifier.height(4.dp))
                 SecuritySection(
                     currentSecurityType = currentSecurityType,
                     onChangeSecurityType = onChangeSecurityType,
@@ -169,7 +176,6 @@ fun SettingsScreen(
             item {
                 Spacer(modifier = Modifier.height(8.dp))
                 AboutSection()
-                Spacer(modifier = Modifier.height(36.dp))
             }
         }
     }
@@ -212,6 +218,13 @@ private fun SecuritySection(
         SecurityType.NONE -> stringResource(R.string.settings_lock_type_none)
     }
 
+    val lockTypeBadge = when (currentSecurityType) {
+        SecurityType.PIN -> stringResource(R.string.setup_pin_title)
+        SecurityType.PASSWORD -> stringResource(R.string.setup_password_title)
+        SecurityType.PATTERN -> stringResource(R.string.setup_pattern_title)
+        SecurityType.NONE -> stringResource(R.string.settings_lock_type_none)
+    }
+
     val lockTypeIcon = when (currentSecurityType) {
         SecurityType.PIN -> Icons.Outlined.Pin
         SecurityType.PASSWORD -> Icons.Outlined.Password
@@ -235,7 +248,7 @@ private fun SecuritySection(
                             .padding(horizontal = 12.dp, vertical = 5.dp),
                     ) {
                         Text(
-                            text = currentSecurityType.name,
+                            text = lockTypeBadge,
                             style = MaterialTheme.typography.labelMediumEmphasized,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
@@ -418,7 +431,6 @@ private fun AboutSection() {
         item {
             BasePreference(
                 title = stringResource(R.string.settings_version),
-                summary = stringResource(R.string.settings_version_value),
                 icon = Icons.Outlined.Info,
                 widget = {
                     Text(

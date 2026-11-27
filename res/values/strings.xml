@@ -263,4 +263,32 @@
     <string name="verify_pin_prompt">Enter your current PIN to change security</string>
     <string name="verify_password_prompt">Enter your current password to change security</string>
     <string name="verify_pattern_prompt">Draw your current pattern to change security</string>
+
+    <!-- Accessibility & localized labels -->
+    <string name="action_collapse">Collapse</string>
+    <string name="action_expand">Expand</string>
+    <string name="action_app_details">Details for %1$s</string>
+    <string name="action_clear_selection">Clear selection</string>
+    <string name="pin_dots_content_description">%1$d of %2$d digits entered</string>
+    <string name="pattern_accessibility_hint">Pattern unlock grid. Draw a pattern connecting at least 4 dots.</string>
+    <string name="vault_filter_all">All</string>
+    <string name="vault_filter_media">Media</string>
+    <string name="vault_filter_files">Files</string>
+    <string name="vault_section_images">Images</string>
+    <string name="vault_section_videos">Videos</string>
+    <string name="vault_section_files">Files</string>
+    <string name="vault_filter_empty_media_title">No media in vault</string>
+    <string name="vault_filter_empty_media_description">Photos and videos you import to the vault will appear here.</string>
+    <string name="vault_filter_empty_files_title">No documents in vault</string>
+    <string name="vault_filter_empty_files_description">Documents and other files you import to the vault will appear here.</string>
+    <string name="vault_action_show_all">Show all</string>
+    <string name="vault_restored_single">Restored to: %1$s</string>
+    <string name="vault_restored_multiple">%1$d files restored from vault</string>
+    <string name="vault_delete_confirm_message">Permanently delete %1$d selected files?</string>
+    <string name="vault_delete_confirm_message_single">Permanently delete 1 selected file?</string>
+    <string name="vault_restore_confirm_message">Restore %1$d selected files from the vault?</string>
+    <string name="vault_restore_confirm_message_single">Restore 1 selected file from the vault?</string>
+    <string name="vault_open_with">Open with</string>
+    <string name="vault_video_indicator">Video</string>
+    <string name="vault_selected_indicator">Selected</string>
 </resources>

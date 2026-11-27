@@ -56,12 +56,12 @@ class AuthenticateActivity : ComponentActivity() {
     private var userId: Int = 0
     private var isSystemUnlock: Boolean = false
 
-    private enum class AuthState { IDLE, PROMPT_SHOWING, EXITING, FINISHED }
+    internal val authLifecycle = AuthLifecycleStateMachine()
+    private var biometricCancellationSignal: CancellationSignal? = null
 
     private var resultIntent: Intent? = null
     private var isAuthSuccess = false
     private var failedTime: Long = 0
-    private var authState: AuthState = AuthState.IDLE
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -128,7 +128,7 @@ class AuthenticateActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(
                             MaterialTheme.colorScheme.surfaceContainerLowest.copy(
-                                alpha = if (blurActive) 0.90f else 1.0f,
+                                alpha = if (blurActive) 0.72f else 1.0f,
                             ),
                         ),
                 ) {
@@ -147,6 +147,8 @@ class AuthenticateActivity : ComponentActivity() {
     }
 
     private fun showBiometricPrompt() {
+        if (isFinishing || !authLifecycle.beginBiometricPrompt()) return
+
         val negativeButtonText = when (securityManager.getSecurityType()) {
             SecurityType.PIN -> getString(R.string.biometric_use_pin)
             SecurityType.PASSWORD -> getString(R.string.biometric_use_password)
@@ -156,32 +158,48 @@ class AuthenticateActivity : ComponentActivity() {
 
         val prompt = BiometricPrompt.Builder(this)
             .setTitle(getString(R.string.auth_title_unlock, appLabel ?: getString(R.string.app_name)))
-            .setNegativeButton(negativeButtonText, mainExecutor) { _, _ -> }
+            .setNegativeButton(negativeButtonText, mainExecutor) { _, _ ->
+                authLifecycle.onBiometricNegativeButton()
+            }
             .setAllowedAuthenticators(
                 BiometricManager.Authenticators.BIOMETRIC_STRONG or
                     BiometricManager.Authenticators.BIOMETRIC_WEAK,
             )
             .build()
 
+        biometricCancellationSignal?.cancel()
+        val signal = CancellationSignal()
+        biometricCancellationSignal = signal
+
         prompt.authenticate(
-            CancellationSignal(),
+            signal,
             mainExecutor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(
                     result: BiometricPrompt.AuthenticationResult?,
                 ) {
                     super.onAuthenticationSucceeded(result)
-                    unlockAndFinish()
+                    biometricCancellationSignal = null
+                    if (authLifecycle.onBiometricSucceeded()) {
+                        unlockAndFinish()
+                    }
+                }
+
+                override fun onAuthenticationFailed() {
+                    super.onAuthenticationFailed()
+                    authLifecycle.onBiometricFailed()
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
                     super.onAuthenticationError(errorCode, errString)
-                    if (
+                    biometricCancellationSignal = null
+                    val stayOnCredentialScreen =
                         errorCode == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED ||
-                        errorCode == BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON
-                    ) {
-                        // Stay on credential prompt
-                    } else {
+                            errorCode == BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON ||
+                            errorCode == BiometricPrompt.BIOMETRIC_ERROR_CANCELED ||
+                            errorCode == BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT ||
+                            errorCode == BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT_PERMANENT
+                    if (authLifecycle.onBiometricError(stayOnCredentialScreen)) {
                         cancelAndFinish()
                     }
                 }
@@ -208,8 +226,7 @@ class AuthenticateActivity : ComponentActivity() {
     }
 
     private fun unlockAndFinish() {
-        if (authState == AuthState.FINISHED || isFinishing) return
-        authState = AuthState.FINISHED
+        if (isFinishing || !authLifecycle.markFinished()) return
         if (packageName != null) {
             (getSystemService(Context.AX_SANDBOX_SERVICE) as? AxSandboxManager)
                 ?.unlockApp(packageName!!, userId)
@@ -224,8 +241,9 @@ class AuthenticateActivity : ComponentActivity() {
     }
 
     private fun cancelAndFinish() {
-        if (authState == AuthState.FINISHED || isFinishing) return
-        authState = AuthState.FINISHED
+        if (isFinishing || !authLifecycle.markFinished()) return
+        biometricCancellationSignal?.cancel()
+        biometricCancellationSignal = null
         resultIntent?.apply {
             putExtra(EXTRA_LOCKED_PACKAGE, packageName)
             putExtra(EXTRA_LOCKED_UID, userId)
@@ -243,16 +261,22 @@ class AuthenticateActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (authState != AuthState.FINISHED) {
+        if (authLifecycle.shouldCancelOnPause()) {
             cancelAndFinish()
         }
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (authState == AuthState.IDLE) {
+        if (authLifecycle.shouldCancelOnUserLeaveHint()) {
             cancelAndFinish()
         }
+    }
+
+    override fun onDestroy() {
+        biometricCancellationSignal?.cancel()
+        biometricCancellationSignal = null
+        super.onDestroy()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

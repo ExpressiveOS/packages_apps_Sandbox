@@ -21,9 +21,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -36,15 +36,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -53,11 +56,9 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FolderZip
@@ -67,15 +68,14 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -101,25 +101,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.android.axion.compose.expressive.ExpressiveAlertDialog
 import com.android.axion.compose.expressive.ExpressiveBlurSurface
-import com.android.axion.compose.expressive.ExpressiveFloatingToolbar
+import com.android.axion.compose.expressive.ExpressiveEmptyState
 import com.android.axion.compose.expressive.ExpressiveMorphButton
 import com.android.axion.compose.expressive.ExpressiveMorphContainer
 import com.android.axion.compose.expressive.ExpressiveMorphLoadingIndicator
 import com.android.axion.compose.expressive.ExpressiveSegmentOption
 import com.android.axion.compose.expressive.ExpressiveSegmentedButtonRow
 import com.android.axion.compose.expressive.ExpressiveShapePreset
-import com.android.axion.compose.expressive.ExpressiveToolbarIconButton
-import com.android.axion.compose.expressive.ExpressiveToolbarPrimaryPill
+import com.android.axion.compose.expressive.ExpressiveSnackbarHost
 import com.android.axion.compose.expressive.ExpressiveWavyCircularProgress
 import com.android.axion.compose.expressive.rememberExpressiveHaptics
 import com.android.axion.compose.expressive.rememberExpressiveReducedMotion
 import com.android.axion.compose.preferences.ExpressiveShapes
 import com.android.axion.compose.preferences.PreferenceTokens
-import com.android.axion.compose.preferences.dialogWidth
 import com.android.axion.compose.preferences.preferencePosition
 import com.android.axion.compose.preferences.preferenceShape
 import com.android.axion.compose.theme.withTabularNums
@@ -128,7 +126,6 @@ import com.android.axion.sandbox.io.FileVaultManager
 import com.android.axion.sandbox.io.VaultFile
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -138,13 +135,26 @@ private enum class VaultFilter {
     FILES,
 }
 
+data class VaultToolbarState(
+    val isMultiSelect: Boolean,
+    val selectedCount: Int,
+    val onClearSelection: () -> Unit,
+    val onImportClick: () -> Unit,
+    val onExportClick: () -> Unit,
+    val onDeleteClick: () -> Unit,
+)
+
 @Composable
 fun VaultTab(
     isUnlocked: Boolean = false,
     onUnlockRequest: () -> Unit = {},
     onPickingFilesChange: (Boolean) -> Unit = {},
+    onToolbarStateChange: (VaultToolbarState?) -> Unit = {},
 ) {
     if (!isUnlocked) {
+        LaunchedEffect(Unit) {
+            onToolbarStateChange(null)
+        }
         LockedVaultScreen(onUnlockRequest)
         return
     }
@@ -153,6 +163,7 @@ fun VaultTab(
     val scope = rememberCoroutineScope()
     val haptics = rememberExpressiveHaptics()
     val vaultManager = remember { FileVaultManager(context) }
+    val snackbarHostState = remember { SnackbarHostState() }
     var files by remember { mutableStateOf<List<VaultFile>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedFilter by rememberSaveable { mutableStateOf(VaultFilter.ALL) }
@@ -192,7 +203,10 @@ fun VaultTab(
 
     var isProcessing by remember { mutableStateOf(false) }
     var processingMessage by remember { mutableStateOf("") }
-    var restoredPopupMessage by remember { mutableStateOf<String?>(null) }
+
+    BackHandler(enabled = isMultiSelectMode) {
+        selectedFiles = emptySet()
+    }
 
     fun toggleSelection(id: String) {
         haptics.performStepTick()
@@ -208,15 +222,55 @@ fun VaultTab(
             isProcessing = true
             processingMessage = context.getString(R.string.action_import_vault)
             scope.launch(Dispatchers.IO) {
+                var importedCount = 0
+                var failedCount = 0
                 try {
-                    uris.forEach { vaultManager.importFile(it) }
+                    uris.forEach { uri ->
+                        if (vaultManager.importFile(uri)) {
+                            importedCount++
+                        } else {
+                            failedCount++
+                        }
+                    }
                 } finally {
                     withContext(Dispatchers.Main) {
                         isProcessing = false
                         refreshFiles()
+                        val msg = when {
+                            failedCount > 0 -> context.getString(R.string.vault_import_error)
+                            importedCount > 0 -> context.getString(R.string.vault_import_success, importedCount)
+                            else -> null
+                        }
+                        if (msg != null) {
+                            scope.launch { snackbarHostState.showSnackbar(msg) }
+                        }
                     }
                 }
             }
+        }
+    }
+
+    val triggerImport: () -> Unit = {
+        onPickingFilesChange(true)
+        pickFilesLauncher.launch(arrayOf("*/*"))
+    }
+
+    LaunchedEffect(isMultiSelectMode, selectedFiles.size) {
+        onToolbarStateChange(
+            VaultToolbarState(
+                isMultiSelect = isMultiSelectMode,
+                selectedCount = selectedFiles.size,
+                onClearSelection = { selectedFiles = emptySet() },
+                onImportClick = triggerImport,
+                onExportClick = { showRestoreConfirm = true },
+                onDeleteClick = { showDeleteConfirm = true },
+            ),
+        )
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            onToolbarStateChange(null)
         }
     }
 
@@ -228,17 +282,20 @@ fun VaultTab(
                 val toRestore = files.filter { selectedFiles.contains(it.id) }
                 val count = vaultManager.restoreFiles(toRestore)
                 withContext(Dispatchers.Main) {
-                    if (count == 1) {
-                        val file = toRestore.first()
-                        val path = if (!file.originalPath.isNullOrEmpty()) {
-                            file.originalPath
-                        } else {
-                            "Downloads/Vault_Restored/" + file.name
+                    val msg = when {
+                        count == 1 -> {
+                            val file = toRestore.first()
+                            val path = if (!file.originalPath.isNullOrEmpty()) {
+                                file.originalPath
+                            } else {
+                                "Downloads/Vault_Restored/" + file.name
+                            }
+                            context.getString(R.string.vault_restored_single, path)
                         }
-                        restoredPopupMessage = "Restored to: $path"
-                    } else if (count > 1) {
-                        restoredPopupMessage = "$count files successfully restored!"
+                        count > 1 -> context.getString(R.string.vault_restored_multiple, count)
+                        else -> context.getString(R.string.export_error)
                     }
+                    scope.launch { snackbarHostState.showSnackbar(msg) }
                 }
             } finally {
                 withContext(Dispatchers.Main) {
@@ -279,22 +336,29 @@ fun VaultTab(
         files.filter { !it.mimeType.startsWith("image/") && !it.mimeType.startsWith("video/") }
     }
 
-    val filterOptions = remember {
+    val filterAllLabel = stringResource(R.string.vault_filter_all)
+    val filterMediaLabel = stringResource(R.string.vault_filter_media)
+    val filterFilesLabel = stringResource(R.string.vault_filter_files)
+    val filterOptions = remember(filterAllLabel, filterMediaLabel, filterFilesLabel) {
         listOf(
-            ExpressiveSegmentOption(VaultFilter.ALL, "All", Icons.Outlined.FolderOpen),
-            ExpressiveSegmentOption(VaultFilter.MEDIA, "Media", Icons.Default.PhotoLibrary),
-            ExpressiveSegmentOption(VaultFilter.FILES, "Files", Icons.Default.Description),
+            ExpressiveSegmentOption(VaultFilter.ALL, filterAllLabel, Icons.Outlined.FolderOpen),
+            ExpressiveSegmentOption(VaultFilter.MEDIA, filterMediaLabel, Icons.Default.PhotoLibrary),
+            ExpressiveSegmentOption(VaultFilter.FILES, filterFilesLabel, Icons.Default.Description),
         )
     }
+
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (isLoading) {
             VaultLoadingScreen()
         } else if (files.isEmpty()) {
-            EmptyVaultScreen()
+            EmptyVaultScreen(bottomClearance = navBarBottom + 96.dp)
         } else {
             val showMedia = selectedFilter == VaultFilter.ALL || selectedFilter == VaultFilter.MEDIA
             val showDocs = selectedFilter == VaultFilter.ALL || selectedFilter == VaultFilter.FILES
+            val hasVisibleItems = (showMedia && (images.isNotEmpty() || videos.isNotEmpty())) ||
+                (showDocs && otherFiles.isNotEmpty())
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
@@ -303,7 +367,7 @@ fun VaultTab(
                     start = 16.dp,
                     end = 16.dp,
                     top = 8.dp,
-                    bottom = 172.dp,
+                    bottom = navBarBottom + 96.dp,
                 ),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -317,9 +381,34 @@ fun VaultTab(
                     )
                 }
 
+                if (!hasVisibleItems) {
+                    item(span = { GridItemSpan(3) }) {
+                        val isMediaFilter = selectedFilter == VaultFilter.MEDIA
+                        ExpressiveEmptyState(
+                            icon = if (isMediaFilter) Icons.Default.PhotoLibrary else Icons.Default.Description,
+                            title = stringResource(
+                                if (isMediaFilter) {
+                                    R.string.vault_filter_empty_media_title
+                                } else {
+                                    R.string.vault_filter_empty_files_title
+                                },
+                            ),
+                            description = stringResource(
+                                if (isMediaFilter) {
+                                    R.string.vault_filter_empty_media_description
+                                } else {
+                                    R.string.vault_filter_empty_files_description
+                                },
+                            ),
+                            actionLabel = stringResource(R.string.vault_action_show_all),
+                            onAction = { selectedFilter = VaultFilter.ALL },
+                        )
+                    }
+                }
+
                 if (showMedia && images.isNotEmpty()) {
                     item(span = { GridItemSpan(3) }) {
-                        VaultSectionHeader("Images", images.size)
+                        VaultSectionHeader(stringResource(R.string.vault_section_images), images.size)
                     }
                     items(images, key = { it.id }) { file ->
                         MediaGridItem(
@@ -346,7 +435,7 @@ fun VaultTab(
                 if (showMedia && videos.isNotEmpty()) {
                     item(span = { GridItemSpan(3) }) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        VaultSectionHeader("Videos", videos.size)
+                        VaultSectionHeader(stringResource(R.string.vault_section_videos), videos.size)
                     }
                     items(videos, key = { it.id }) { file ->
                         MediaGridItem(
@@ -373,7 +462,7 @@ fun VaultTab(
                 if (showDocs && otherFiles.isNotEmpty()) {
                     item(span = { GridItemSpan(3) }) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        VaultSectionHeader("Files", otherFiles.size)
+                        VaultSectionHeader(stringResource(R.string.vault_section_files), otherFiles.size)
                     }
                     itemsIndexed(
                         items = otherFiles,
@@ -404,165 +493,39 @@ fun VaultTab(
             }
         }
 
-        // Action bar positioned cleanly above the bottom Sandbox floating navigation bar
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 16.dp, vertical = 92.dp),
-        ) {
-            if (!isMultiSelectMode) {
-                ExpressiveFloatingToolbar(
-                    frosted = true,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                ) {
-                    ExpressiveToolbarPrimaryPill(
-                        label = stringResource(R.string.action_import_vault),
-                        icon = Icons.Default.Add,
-                        onClick = {
-                            onPickingFilesChange(true)
-                            pickFilesLauncher.launch(arrayOf("*/*"))
-                        },
-                    )
-                }
-            } else {
-                ExpressiveFloatingToolbar(
-                    frosted = true,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    leadingContent = {
-                        ExpressiveToolbarIconButton(
-                            icon = Icons.Default.Close,
-                            contentDescription = stringResource(R.string.action_cancel),
-                            onClick = { selectedFiles = emptySet() },
-                        )
-                        Text(
-                            text = "${selectedFiles.size}",
-                            style = MaterialTheme.typography.titleMediumEmphasized.withTabularNums(),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(horizontal = 6.dp),
-                        )
-                    },
-                ) {
-                    ExpressiveMorphButton(
-                        onClick = { showRestoreConfirm = true },
-                        selected = false,
-                        restingPreset = ExpressiveShapePreset.PILL,
-                        pressedPreset = ExpressiveShapePreset.SQUIRCLE,
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Restore,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    ) {
-                        Text(text = stringResource(R.string.action_export))
-                    }
-
-                    ExpressiveMorphButton(
-                        onClick = { showDeleteConfirm = true },
-                        selected = true,
-                        restingPreset = ExpressiveShapePreset.PILL,
-                        pressedPreset = ExpressiveShapePreset.SQUIRCLE,
-                        selectedPreset = ExpressiveShapePreset.PILL,
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    ) {
-                        Text(text = stringResource(R.string.action_delete))
-                    }
-                }
-            }
-        }
-
         if (showDeleteConfirm || showRestoreConfirm) {
             val isDelete = showDeleteConfirm
-            AlertDialog(
+            val count = selectedFiles.size
+            val confirmMessage = when {
+                isDelete && count == 1 -> stringResource(R.string.vault_delete_confirm_message_single)
+                isDelete -> stringResource(R.string.vault_delete_confirm_message, count)
+                count == 1 -> stringResource(R.string.vault_restore_confirm_message_single)
+                else -> stringResource(R.string.vault_restore_confirm_message, count)
+            }
+            ExpressiveAlertDialog(
                 onDismissRequest = {
                     showDeleteConfirm = false
                     showRestoreConfirm = false
                 },
-                shape = ExpressiveShapes.extraLarge,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.width(dialogWidth()),
-                title = {
-                    Text(
-                        text = if (isDelete) {
-                            stringResource(R.string.delete_confirm_title)
-                        } else {
-                            stringResource(R.string.action_export)
-                        },
-                        style = MaterialTheme.typography.headlineSmallEmphasized,
-                    )
+                title = stringResource(
+                    if (isDelete) R.string.delete_confirm_title else R.string.action_export,
+                ),
+                text = confirmMessage,
+                confirmText = stringResource(
+                    if (isDelete) R.string.action_delete else R.string.action_export,
+                ),
+                onConfirm = {
+                    if (isDelete) executeDelete() else executeRestore()
+                    showDeleteConfirm = false
+                    showRestoreConfirm = false
                 },
-                text = {
-                    Text(
-                        text = if (isDelete) {
-                            "Permanently delete ${selectedFiles.size} selected file(s)?"
-                        } else {
-                            "Restore ${selectedFiles.size} selected file(s) from the vault?"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                dismissText = stringResource(R.string.action_cancel),
+                onDismiss = {
+                    showDeleteConfirm = false
+                    showRestoreConfirm = false
                 },
-                confirmButton = {
-                    ExpressiveMorphButton(
-                        onClick = {
-                            if (isDelete) executeDelete() else executeRestore()
-                            showDeleteConfirm = false
-                            showRestoreConfirm = false
-                        },
-                        selected = true,
-                        restingPreset = ExpressiveShapePreset.PILL,
-                        pressedPreset = ExpressiveShapePreset.SQUIRCLE,
-                        selectedPreset = ExpressiveShapePreset.PILL,
-                        containerColor = if (isDelete) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        },
-                        contentColor = if (isDelete) {
-                            MaterialTheme.colorScheme.onError
-                        } else {
-                            MaterialTheme.colorScheme.onPrimary
-                        },
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
-                    ) {
-                        Text(
-                            text = if (isDelete) {
-                                stringResource(R.string.action_delete)
-                            } else {
-                                stringResource(R.string.action_export)
-                            },
-                        )
-                    }
-                },
-                dismissButton = {
-                    OutlinedButton(
-                        onClick = {
-                            haptics.performStepTick()
-                            showDeleteConfirm = false
-                            showRestoreConfirm = false
-                        },
-                        shape = CircleShape,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.action_cancel),
-                            style = MaterialTheme.typography.labelLargeEmphasized,
-                        )
-                    }
-                },
-                properties = DialogProperties(usePlatformDefaultWidth = false),
+                icon = if (isDelete) Icons.Default.Delete else Icons.Default.Restore,
+                destructive = isDelete,
             )
         }
 
@@ -594,36 +557,13 @@ fun VaultTab(
             }
         }
 
-        restoredPopupMessage?.let { msg ->
-            LaunchedEffect(msg) {
-                delay(4000)
-                restoredPopupMessage = null
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 160.dp, start = 16.dp, end = 16.dp),
-                contentAlignment = Alignment.BottomCenter,
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.inverseSurface,
-                    shadowElevation = 6.dp,
-                    modifier = Modifier
-                        .wrapContentSize()
-                        .animateContentSize(),
-                ) {
-                    Text(
-                        text = msg,
-                        color = MaterialTheme.colorScheme.inverseOnSurface,
-                        style = MaterialTheme.typography.bodyMediumEmphasized,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    )
-                }
-            }
-        }
+        ExpressiveSnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, bottom = 84.dp),
+        )
     }
 }
 
@@ -725,21 +665,28 @@ private fun MediaGridItem(
         } else {
             Icon(
                 imageVector = if (isVideo) Icons.Default.VideoFile else Icons.Default.Image,
-                contentDescription = null,
+                contentDescription = file.name,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 modifier = Modifier.align(Alignment.Center),
             )
         }
 
         if (isVideo) {
-            Icon(
-                imageVector = Icons.Default.PlayCircle,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.86f),
+            Box(
                 modifier = Modifier
-                    .size(28.dp)
-                    .align(Alignment.Center),
-            )
+                    .size(40.dp)
+                    .align(Alignment.Center)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = stringResource(R.string.vault_video_indicator),
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         }
 
         if (isSelected) {
@@ -750,7 +697,7 @@ private fun MediaGridItem(
             ) {
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
+                    contentDescription = stringResource(R.string.vault_selected_indicator),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .padding(8.dp)
@@ -829,7 +776,7 @@ private fun FileListItem(
             if (isSelected) {
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
+                    contentDescription = stringResource(R.string.vault_selected_indicator),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp),
                 )
@@ -850,7 +797,7 @@ private fun openVaultFileInternal(context: Context, file: VaultFile, uri: Uri) {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
         }
-        val chooser = Intent.createChooser(intent, "Open with")
+        val chooser = Intent.createChooser(intent, context.getString(R.string.vault_open_with))
         chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(chooser)
     } catch (_: Exception) {
@@ -874,20 +821,23 @@ private fun formatFileSize(size: Long): String {
 
 @Composable
 private fun LockedVaultScreen(onUnlockRequest: () -> Unit) {
-    var morphed by remember { mutableStateOf(false) }
-
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = navBarBottom + 88.dp),
+        contentAlignment = Alignment.Center,
+    ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(32.dp),
         ) {
             ExpressiveMorphContainer(
-                active = morphed,
+                active = false,
                 inactivePreset = ExpressiveShapePreset.COOKIE_7,
-                activePreset = ExpressiveShapePreset.SOFT_BURST,
+                activePreset = ExpressiveShapePreset.COOKIE_7,
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                onClick = { morphed = !morphed },
                 modifier = Modifier.size(92.dp),
             ) {
                 Icon(
@@ -901,6 +851,7 @@ private fun LockedVaultScreen(onUnlockRequest: () -> Unit) {
                 text = stringResource(R.string.vault_locked_title),
                 style = MaterialTheme.typography.headlineSmallEmphasized,
                 color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -931,44 +882,17 @@ private fun LockedVaultScreen(onUnlockRequest: () -> Unit) {
 }
 
 @Composable
-private fun EmptyVaultScreen() {
+private fun EmptyVaultScreen(bottomClearance: androidx.compose.ui.unit.Dp) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(bottom = 88.dp),
+            .padding(bottom = bottomClearance),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp),
-        ) {
-            ExpressiveMorphContainer(
-                active = false,
-                inactivePreset = ExpressiveShapePreset.COOKIE_7,
-                activePreset = ExpressiveShapePreset.SOFT_BURST,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(88.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.FolderOpen,
-                    contentDescription = null,
-                    modifier = Modifier.size(42.dp),
-                )
-            }
-            Spacer(modifier = Modifier.height(18.dp))
-            Text(
-                text = stringResource(R.string.vault_empty_title),
-                style = MaterialTheme.typography.titleLargeEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(R.string.vault_empty_description),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
+        ExpressiveEmptyState(
+            icon = Icons.Outlined.FolderOpen,
+            title = stringResource(R.string.vault_empty_title),
+            description = stringResource(R.string.vault_empty_description),
+        )
     }
 }

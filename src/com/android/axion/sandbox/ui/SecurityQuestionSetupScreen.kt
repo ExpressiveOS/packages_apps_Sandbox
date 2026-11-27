@@ -19,9 +19,11 @@ package com.android.axion.sandbox.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -52,6 +54,24 @@ import com.android.axion.compose.scaffold.AxionScaffold
 import com.android.axion.sandbox.R
 import com.android.axion.sandbox.security.SandboxSecurityManager
 
+private val SECURITY_QUESTION_RES_IDS = listOf(
+    R.string.question_pet_name,
+    R.string.question_birth_city,
+    R.string.question_favorite_movie,
+    R.string.question_mother_maiden,
+    R.string.question_first_car,
+)
+
+@Composable
+internal fun localizedSecurityQuestion(canonicalQuestion: String): String {
+    val index = SandboxSecurityManager.SECURITY_QUESTIONS.indexOf(canonicalQuestion)
+    return if (index in SECURITY_QUESTION_RES_IDS.indices) {
+        stringResource(SECURITY_QUESTION_RES_IDS[index])
+    } else {
+        canonicalQuestion
+    }
+}
+
 @Composable
 fun SecurityQuestionSetupScreen(
     onComplete: (question: String, answer: String) -> Unit,
@@ -61,8 +81,13 @@ fun SecurityQuestionSetupScreen(
     val haptics = rememberExpressiveHaptics()
     var selectedQuestion by remember { mutableStateOf<String?>(null) }
     var answer by remember { mutableStateOf("") }
-    val questionOptions = remember {
-        SandboxSecurityManager.SECURITY_QUESTIONS.map { it to it }
+    val questionOptions = SandboxSecurityManager.SECURITY_QUESTIONS.mapIndexed { index, canonical ->
+        val label = if (index in SECURITY_QUESTION_RES_IDS.indices) {
+            stringResource(SECURITY_QUESTION_RES_IDS[index])
+        } else {
+            canonical
+        }
+        canonical to label
     }
 
     AxionScaffold(
@@ -74,8 +99,9 @@ fun SecurityQuestionSetupScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
+                .padding(paddingValues)
                 .padding(horizontal = 16.dp),
         ) {
             Spacer(modifier = Modifier.height(8.dp))
@@ -132,7 +158,7 @@ fun SecurityQuestionSetupScreen(
                 selectedPreset = ExpressiveShapePreset.PILL,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
+                    .defaultMinSize(minHeight = 54.dp),
             ) {
                 Text(text = stringResource(R.string.action_continue))
             }
@@ -148,7 +174,7 @@ fun SecurityQuestionSetupScreen(
                     shape = CircleShape,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
+                        .defaultMinSize(minHeight = 48.dp),
                 ) {
                     Text(
                         text = stringResource(R.string.action_skip),

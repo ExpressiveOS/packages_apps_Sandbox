@@ -37,9 +37,16 @@ import android.os.UserHandle
 import android.util.IconDrawableFactory
 import android.util.Log
 import android.util.LruCache
+import android.text.format.DateFormat
 import android.view.View
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -50,9 +57,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -66,15 +80,19 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -91,11 +109,11 @@ import androidx.compose.material3.FilledIconToggleButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -136,7 +154,9 @@ import androidx.compose.ui.graphics.withSave
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -155,7 +175,9 @@ import com.android.axion.compose.expressive.ExpressiveMorphContainer
 import com.android.axion.compose.expressive.ExpressiveMorphLoadingIndicator
 import com.android.axion.compose.expressive.ExpressiveSegmentOption
 import com.android.axion.compose.expressive.ExpressiveSegmentedButtonRow
+import com.android.axion.compose.expressive.ExpressiveSearchBar
 import com.android.axion.compose.expressive.ExpressiveShapePreset
+import com.android.axion.compose.expressive.ExpressiveToolbarIconButton
 import com.android.axion.compose.expressive.rememberExpressiveHaptics
 import com.android.axion.compose.expressive.rememberExpressiveReducedMotion
 import com.android.axion.compose.preferences.BasePreference
@@ -175,9 +197,7 @@ import com.android.axion.compose.theme.withTabularNums
 import com.android.axion.sandbox.R
 import com.android.internal.app.HiddenNotificationInfo
 import com.android.internal.app.IHiddenNotificationListener
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -330,14 +350,28 @@ fun SandboxApp(
     val isLoading = apps.isEmpty()
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedApp by remember { mutableStateOf<AppInfo?>(null) }
+    var vaultToolbarState by remember { mutableStateOf<VaultToolbarState?>(null) }
+
+    LaunchedEffect(isSearchExpanded) {
+        if (!isSearchExpanded) {
+            searchQuery = ""
+        }
+    }
 
     val pagerState = rememberPagerState(
         initialPage = selectedTabIndex,
         pageCount = { 3 },
     )
 
-    LaunchedEffect(pagerState.currentPage) {
+    LaunchedEffect(pagerState.currentPage, isPrivateUnlocked) {
         onTabIndexChange(pagerState.currentPage)
+        if (pagerState.currentPage != 2 || !isPrivateUnlocked) {
+            vaultToolbarState = null
+        }
+    }
+
+    BackHandler(enabled = selectedApp != null) {
+        selectedApp = null
     }
 
     val reloadApps: () -> Unit = {
@@ -491,33 +525,6 @@ fun SandboxApp(
                     title = stringResource(R.string.sandbox_title),
                     scrollBehavior = scrollBehavior,
                     containerColor = MaterialTheme.colorScheme.surface,
-                    titleContent = if (isSearchExpanded) {
-                        {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text(stringResource(R.string.search_hint)) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Search,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                                singleLine = true,
-                                shape = CircleShape,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                                    unfocusedBorderColor = Color.Transparent,
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                ),
-                            )
-                        }
-                    } else {
-                        null
-                    },
                     actions = {
                         FilledIconToggleButton(
                             checked = isSearchExpanded,
@@ -616,54 +623,166 @@ fun SandboxApp(
                     .fillMaxSize()
                     .padding(top = paddingValues.calculateTopPadding()),
             ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                ) { page ->
-                    when (page) {
-                        0 -> AppsTab(
-                            apps = filteredApps,
-                            isLoading = isLoading,
-                            onOpenAppDetail = { app -> selectedApp = app },
-                            isPrivateAreaExpanded = isPrivateAreaExpanded,
-                            onPrivateAreaExpandChange = onPrivateAreaExpandChange,
-                            onUnlockRequest = onUnlockRequest,
-                            isPrivateUnlocked = isPrivateUnlocked,
-                            isSecuritySetup = isSecuritySetup,
-                            onSetupSecurity = onSetupSecurity,
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .imePadding(),
+                ) {
+                    AnimatedVisibility(visible = isSearchExpanded) {
+                        ExpressiveSearchBar(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it },
+                            placeholder = stringResource(R.string.search_hint),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                         )
+                    }
 
-                        1 -> NotificationsTab(
-                            isUnlocked = isPrivateUnlocked,
-                            onUnlockRequest = onUnlockRequest,
-                        )
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                    ) { page ->
+                        when (page) {
+                            0 -> AppsTab(
+                                apps = filteredApps,
+                                isLoading = isLoading,
+                                onOpenAppDetail = { app -> selectedApp = app },
+                                isPrivateAreaExpanded = isPrivateAreaExpanded,
+                                onPrivateAreaExpandChange = onPrivateAreaExpandChange,
+                                onUnlockRequest = onUnlockRequest,
+                                isPrivateUnlocked = isPrivateUnlocked,
+                                isSecuritySetup = isSecuritySetup,
+                                onSetupSecurity = onSetupSecurity,
+                            )
 
-                        2 -> VaultTab(
-                            isUnlocked = isPrivateUnlocked,
-                            onUnlockRequest = onUnlockRequest,
-                            onPickingFilesChange = onPickingFilesChange,
-                        )
+                            1 -> NotificationsTab(
+                                isUnlocked = isPrivateUnlocked,
+                                onUnlockRequest = onUnlockRequest,
+                            )
+
+                            2 -> VaultTab(
+                                isUnlocked = isPrivateUnlocked,
+                                onUnlockRequest = onUnlockRequest,
+                                onPickingFilesChange = onPickingFilesChange,
+                                onToolbarStateChange = { vaultToolbarState = it },
+                            )
+                        }
                     }
                 }
 
-                SandboxFloatingNavToolbar(
-                    selectedTab = pagerState.currentPage,
-                    onTabSelected = { index ->
-                        scope.launch {
-                            if (reducedMotion) {
-                                pagerState.scrollToPage(index)
-                            } else {
-                                pagerState.animateScrollToPage(index)
-                            }
+                val activeVaultToolbar = if (pagerState.currentPage == 2 && isPrivateUnlocked) {
+                    vaultToolbarState
+                } else {
+                    null
+                }
+                val isVaultMultiSelect = activeVaultToolbar?.isMultiSelect == true
+
+                val toolbarFadeSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+
+                AnimatedContent(
+                    targetState = isVaultMultiSelect,
+                    transitionSpec = {
+                        if (reducedMotion) {
+                            fadeIn(snap()) togetherWith fadeOut(snap())
+                        } else {
+                            fadeIn(toolbarFadeSpec) togetherWith fadeOut(toolbarFadeSpec)
                         }
                     },
-                    notificationCount = notificationCount,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
-                        .padding(bottom = 16.dp),
-                )
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    label = "SandboxBottomToolbarMorph",
+                ) { multiSelect ->
+                    if (multiSelect && activeVaultToolbar != null) {
+                        VaultSelectionFloatingToolbar(state = activeVaultToolbar)
+                    } else {
+                        SandboxFloatingNavToolbar(
+                            selectedTab = pagerState.currentPage,
+                            onTabSelected = { index ->
+                                scope.launch {
+                                    if (reducedMotion) {
+                                        pagerState.scrollToPage(index)
+                                    } else {
+                                        pagerState.animateScrollToPage(index)
+                                    }
+                                }
+                            },
+                            notificationCount = notificationCount,
+                            onVaultImportClick = activeVaultToolbar?.onImportClick,
+                        )
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun VaultSelectionFloatingToolbar(
+    state: VaultToolbarState,
+    modifier: Modifier = Modifier,
+) {
+    ExpressiveFloatingToolbar(
+        modifier = modifier,
+        frosted = true,
+        shape = CircleShape,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        leadingContent = {
+            ExpressiveToolbarIconButton(
+                icon = Icons.Default.Close,
+                contentDescription = stringResource(R.string.action_clear_selection),
+                onClick = state.onClearSelection,
+            )
+            Text(
+                text = state.selectedCount.toString(),
+                style = MaterialTheme.typography.titleMediumEmphasized.withTabularNums(),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 6.dp),
+            )
+        },
+    ) {
+        ExpressiveMorphButton(
+            onClick = state.onExportClick,
+            selected = false,
+            restingPreset = ExpressiveShapePreset.PILL,
+            pressedPreset = ExpressiveShapePreset.SQUIRCLE,
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Restore,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        ) {
+            Text(text = stringResource(R.string.action_export))
+        }
+
+        ExpressiveMorphButton(
+            onClick = state.onDeleteClick,
+            selected = true,
+            restingPreset = ExpressiveShapePreset.PILL,
+            pressedPreset = ExpressiveShapePreset.SQUIRCLE,
+            selectedPreset = ExpressiveShapePreset.PILL,
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        ) {
+            Text(text = stringResource(R.string.action_delete))
         }
     }
 }
@@ -673,14 +792,38 @@ private fun SandboxFloatingNavToolbar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
     notificationCount: Int,
+    onVaultImportClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = rememberExpressiveHaptics()
     ExpressiveFloatingToolbar(
         modifier = modifier,
         frosted = true,
         shape = CircleShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+        floatingActionButton = onVaultImportClick?.let { importAction ->
+            {
+                FloatingActionButton(
+                    onClick = {
+                        haptics.performConfirm()
+                        importAction()
+                    },
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 4.dp,
+                        pressedElevation = 6.dp,
+                    ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(R.string.action_import_vault),
+                    )
+                }
+            }
+        },
     ) {
         SandboxNavPillItem(
             selected = selectedTab == 0,
@@ -1090,11 +1233,15 @@ fun AppDetailScreen(
             }
         },
     ) { paddingValues ->
+        val layoutDirection = LocalLayoutDirection.current
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = paddingValues.calculateStartPadding(layoutDirection) + 16.dp,
+                end = paddingValues.calculateEndPadding(layoutDirection) + 16.dp,
+                top = paddingValues.calculateTopPadding() + 8.dp,
+                bottom = paddingValues.calculateBottomPadding() + 32.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -1261,6 +1408,11 @@ fun AppsTab(
         ) {
             AppQuickActionsSheet(
                 app = quickActionApp!!,
+                isSecuritySetup = isSecuritySetup,
+                onSetupSecurity = {
+                    onSheetDismiss()
+                    onSetupSecurity()
+                },
                 onLockToggle = onLockToggle,
                 onHideToggle = onHideToggle,
                 onLauncherHideToggle = onLauncherHideToggle,
@@ -1320,13 +1472,14 @@ fun AppsTab(
             }
         }
     } else {
+        val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
                 top = 8.dp,
-                bottom = 112.dp,
+                bottom = navBarBottom + 96.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(PreferenceTokens.ItemSpacing),
         ) {
@@ -1489,7 +1642,7 @@ fun AppsTab(
                                     selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                     selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                 ),
-                                modifier = Modifier.height(30.dp),
+                                modifier = Modifier.defaultMinSize(minHeight = 48.dp),
                             )
                         },
                     )
@@ -1661,11 +1814,11 @@ private fun SegmentedAppCard(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
+                    contentDescription = stringResource(R.string.action_app_details, app.label),
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -1781,12 +1934,17 @@ private fun CollapsibleSectionHeader(
         preferenceShape(PreferencePosition.Single)
     }
 
+    val toggleLabel = stringResource(if (isExpanded) R.string.action_collapse else R.string.action_expand)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
             .clip(headerShape)
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable {
+            .clickable(
+                role = Role.Button,
+                onClickLabel = toggleLabel,
+            ) {
                 val next = !isExpanded
                 haptics.performToggle(next)
                 onExpandChange(next)
@@ -1831,7 +1989,7 @@ private fun CollapsibleSectionHeader(
             Spacer(modifier = Modifier.width(4.dp))
             Icon(
                 imageVector = Icons.Filled.ExpandMore,
-                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier
                     .size(18.dp)
@@ -1844,6 +2002,8 @@ private fun CollapsibleSectionHeader(
 @Composable
 private fun AppQuickActionsSheet(
     app: AppInfo,
+    isSecuritySetup: Boolean,
+    onSetupSecurity: () -> Unit,
     onLockToggle: (AppInfo) -> Unit,
     onHideToggle: (AppInfo) -> Unit,
     onLauncherHideToggle: (AppInfo) -> Unit,
@@ -1899,26 +2059,43 @@ private fun AppQuickActionsSheet(
             }
         }
 
-        item {
-            PreferenceGroup {
-                item {
-                    SwitchPreference(
-                        title = stringResource(R.string.action_lock),
-                        summary = stringResource(R.string.lock_app_description),
-                        checked = app.isLocked,
-                        onCheckedChange = { onLockToggle(app) },
-                        icon = if (app.isLocked) Icons.Filled.Lock else Icons.Outlined.Lock,
-                    )
+        if (isSecuritySetup) {
+            item {
+                PreferenceGroup {
+                    item {
+                        SwitchPreference(
+                            title = stringResource(R.string.action_lock),
+                            summary = stringResource(R.string.lock_app_description),
+                            checked = app.isLocked,
+                            onCheckedChange = { onLockToggle(app) },
+                            icon = if (app.isLocked) Icons.Filled.Lock else Icons.Outlined.Lock,
+                        )
+                    }
                 }
             }
-        }
 
-        item {
-            HideSettingsDropdown(
-                app = app,
-                onHideToggle = onHideToggle,
-                onLauncherHideToggle = onLauncherHideToggle,
-            )
+            item {
+                HideSettingsDropdown(
+                    app = app,
+                    onHideToggle = onHideToggle,
+                    onLauncherHideToggle = onLauncherHideToggle,
+                )
+            }
+        } else {
+            item {
+                PreferenceGroup {
+                    item {
+                        ClickablePreference(
+                            title = stringResource(R.string.setup_private_apps_title),
+                            summary = stringResource(R.string.setup_private_apps_description),
+                            icon = Icons.Filled.Lock,
+                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            iconBackgroundColor = MaterialTheme.colorScheme.primaryContainer,
+                            onClick = onSetupSecurity,
+                        )
+                    }
+                }
+            }
         }
 
         item {
@@ -1954,11 +2131,12 @@ fun NotificationsTab(
     isUnlocked: Boolean = false,
     onUnlockRequest: () -> Unit = {},
 ) {
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     if (!isUnlocked) {
-        var morphed by remember { mutableStateOf(false) }
-
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = navBarBottom + 88.dp),
             contentAlignment = Alignment.Center,
         ) {
             Column(
@@ -1967,12 +2145,11 @@ fun NotificationsTab(
                 modifier = Modifier.padding(32.dp),
             ) {
                 ExpressiveMorphContainer(
-                    active = morphed,
+                    active = false,
                     inactivePreset = ExpressiveShapePreset.COOKIE_7,
-                    activePreset = ExpressiveShapePreset.SOFT_BURST,
+                    activePreset = ExpressiveShapePreset.COOKIE_7,
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    onClick = { morphed = !morphed },
                     modifier = Modifier.size(92.dp),
                 ) {
                     Icon(
@@ -2150,7 +2327,7 @@ fun NotificationsTab(
                 start = 16.dp,
                 end = 16.dp,
                 top = 12.dp,
-                bottom = 112.dp,
+                bottom = navBarBottom + 96.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(PreferenceTokens.ItemSpacing),
         ) {
@@ -2188,6 +2365,7 @@ private fun NotificationItem(
     onLaunch: () -> Unit = {},
     onDismiss: () -> Unit = {},
 ) {
+    val context = LocalContext.current
     val haptics = rememberExpressiveHaptics()
 
     Surface(
@@ -2252,7 +2430,7 @@ private fun NotificationItem(
                         )
 
                         Text(
-                            text = SimpleDateFormat("HH:mm", Locale.getDefault())
+                            text = DateFormat.getTimeFormat(context)
                                 .format(Date(notification.timestamp)),
                             style = MaterialTheme.typography.labelSmallEmphasized.withTabularNums(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

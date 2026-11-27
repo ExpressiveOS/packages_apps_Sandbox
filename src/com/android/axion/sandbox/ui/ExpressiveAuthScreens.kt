@@ -27,10 +27,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -80,14 +83,20 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.android.axion.compose.expressive.ExpressiveBlurSurface
 import com.android.axion.compose.expressive.ExpressiveMorphButton
@@ -121,21 +130,14 @@ private fun AuthShell(
     shakeTranslation: Float = 0f,
     content: @Composable () -> Unit,
 ) {
-    val body: @Composable () -> Unit = {
-        var emblemActive by remember { mutableStateOf(false) }
-
+    val headerSection: @Composable () -> Unit = {
         Column(
-            modifier = Modifier
-                .widthIn(max = 420.dp)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             ExpressiveMorphContainer(
-                active = emblemActive,
+                active = false,
                 inactivePreset = ExpressiveShapePreset.COOKIE_7,
-                activePreset = ExpressiveShapePreset.SOFT_BURST,
+                activePreset = ExpressiveShapePreset.COOKIE_7,
                 containerColor = if (isError) {
                     MaterialTheme.colorScheme.errorContainer
                 } else {
@@ -146,7 +148,6 @@ private fun AuthShell(
                 } else {
                     MaterialTheme.colorScheme.onPrimaryContainer
                 },
-                onClick = { emblemActive = !emblemActive },
                 modifier = Modifier.size(72.dp),
             ) {
                 Icon(
@@ -172,39 +173,49 @@ private fun AuthShell(
                     },
                     textAlign = TextAlign.Center,
                 )
-                if (subtitle.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isError) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .defaultMinSize(minHeight = 20.dp)
+                        .semantics {
+                            if (isError) liveRegion = LiveRegionMode.Assertive
                         },
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            content()
-
-            if (onForgotPassword != null) {
-                Spacer(modifier = Modifier.height(18.dp))
-                TextButton(onClick = onForgotPassword) {
-                    Text(
-                        text = stringResource(R.string.action_forgot_password),
-                        style = MaterialTheme.typography.labelLargeEmphasized,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (subtitle.isNotEmpty()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isError) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
         }
     }
 
-    Box(
+    val forgotAction: @Composable () -> Unit = {
+        if (onForgotPassword != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            TextButton(
+                onClick = onForgotPassword,
+                modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.action_forgot_password),
+                    style = MaterialTheme.typography.labelLargeEmphasized,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .then(
@@ -216,8 +227,53 @@ private fun AuthShell(
             )
             .statusBarsPadding()
             .navigationBarsPadding()
+            .displayCutoutPadding()
             .imePadding(),
     ) {
+        val isCompactLandscape = maxWidth > maxHeight && maxWidth >= 560.dp
+
+        val body: @Composable () -> Unit = {
+            if (isCompactLandscape) {
+                Row(
+                    modifier = Modifier
+                        .widthIn(max = 760.dp)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 24.dp, vertical = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        headerSection()
+                        forgotAction()
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        content()
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 420.dp)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 24.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    headerSection()
+                    Spacer(modifier = Modifier.height(24.dp))
+                    content()
+                    forgotAction()
+                }
+            }
+        }
+
         if (onBack != null) {
             ExpressiveBackButton(
                 onClick = onBack,
@@ -232,7 +288,7 @@ private fun AuthShell(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(horizontal = 16.dp, vertical = 24.dp)
-                    .widthIn(max = 440.dp)
+                    .widthIn(max = if (isCompactLandscape) 780.dp else 440.dp)
                     .fillMaxWidth(),
                 shape = RoundedCornerShape(PreferenceTokens.CornerRadiusSheet),
                 tintColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -325,6 +381,7 @@ fun ExpressivePinScreen(
         confirmPin == null -> stringResource(R.string.pin_prompt_create)
         else -> stringResource(R.string.pin_prompt_confirm)
     }
+    val pinDotsDesc = stringResource(R.string.pin_dots_content_description, enteredPin.length, 4)
 
     AuthShell(
         title = titleText,
@@ -344,8 +401,9 @@ fun ExpressivePinScreen(
         Row(
             modifier = Modifier
                 .graphicsLayer { translationX = shakeTranslation }
-                .padding(bottom = 28.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                .padding(bottom = 24.dp)
+                .semantics { contentDescription = pinDotsDesc },
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             repeat(4) { index ->
@@ -376,11 +434,16 @@ fun ExpressivePinScreen(
                     MorphPolygonShape(morph = dotMorph, progress = progress)
                 }
                 Box(
-                    modifier = Modifier
-                        .size(if (filled) 22.dp else 14.dp)
-                        .clip(dotShape)
-                        .background(dotColor),
-                )
+                    modifier = Modifier.size(24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(if (filled) 22.dp else 14.dp)
+                            .clip(dotShape)
+                            .background(dotColor),
+                    )
+                }
             }
         }
 
@@ -644,7 +707,9 @@ fun ExpressivePasswordScreen(
             pressedPreset = ExpressiveShapePreset.SQUIRCLE,
             selectedPreset = ExpressiveShapePreset.PILL,
             hapticOnClick = false,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp),
         ) {
             Text(text = ctaLabel)
         }
@@ -659,6 +724,7 @@ fun ExpressivePasswordScreen(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                modifier = Modifier.defaultMinSize(minHeight = 48.dp),
                 leadingIcon = {
                     Icon(
                         imageVector = if (biometricType == BiometricType.FACE) {
@@ -696,17 +762,30 @@ fun ExpressivePatternScreen(
 
     var selectedDots by remember { mutableStateOf<List<Int>>(emptyList()) }
     var currentTouch by remember { mutableStateOf<Offset?>(null) }
-    var dotPositions by remember { mutableStateOf<Map<Int, Offset>>(emptyMap()) }
+    var padSize by remember { mutableStateOf(IntSize.Zero) }
     var isError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+
+    val dotPositions = remember(padSize) {
+        computeSandboxPatternDotPositions(padSize)
+    }
 
     val errorMismatch = stringResource(R.string.pattern_error_mismatch)
     val errorIncorrect = stringResource(R.string.pattern_error_incorrect)
     val errorTooShort = stringResource(R.string.pattern_error_too_short)
+    val patternHint = stringResource(R.string.pattern_accessibility_hint)
 
     LaunchedEffect(confirmPattern) {
         selectedDots = emptyList()
         isError = false
+    }
+
+    LaunchedEffect(isError) {
+        if (isError) {
+            delay(1200L)
+            isError = false
+            selectedDots = emptyList()
+        }
     }
 
     val shakeProgress by animateFloatAsState(
@@ -764,7 +843,9 @@ fun ExpressivePatternScreen(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                     shape = RoundedCornerShape(PreferenceTokens.CornerRadiusOuter),
                 )
-                .pointerInput(confirmPattern) {
+                .semantics { contentDescription = patternHint }
+                .onSizeChanged { padSize = it }
+                .pointerInput(confirmPattern, dotPositions) {
                     detectDragGestures(
                         onDragStart = { offset ->
                             isError = false
@@ -816,18 +897,11 @@ fun ExpressivePatternScreen(
                 },
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val cellSize = size.width / 3f
-                val positions = mutableMapOf<Int, Offset>()
-                for (row in 0 until 3) {
-                    for (col in 0 until 3) {
-                        val idx = row * 3 + col
-                        positions[idx] = Offset(
-                            x = col * cellSize + cellSize / 2f,
-                            y = row * cellSize + cellSize / 2f,
-                        )
-                    }
+                val positions = if (dotPositions.isNotEmpty()) {
+                    dotPositions
+                } else {
+                    computeSandboxPatternDotPositions(IntSize(size.width.toInt(), size.height.toInt()))
                 }
-                dotPositions = positions
 
                 val lineColor = if (isError) errorColor else primaryColor
                 if (selectedDots.size > 1) {
@@ -892,6 +966,7 @@ fun ExpressivePatternScreen(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                modifier = Modifier.defaultMinSize(minHeight = 48.dp),
                 leadingIcon = {
                     Icon(
                         imageVector = if (biometricType == BiometricType.FACE) {
@@ -908,6 +983,22 @@ fun ExpressivePatternScreen(
             }
         }
     }
+}
+
+private fun computeSandboxPatternDotPositions(size: IntSize): Map<Int, Offset> {
+    if (size.width <= 0 || size.height <= 0) return emptyMap()
+    val cellW = size.width / 3f
+    val cellH = size.height / 3f
+    val positions = HashMap<Int, Offset>(9)
+    for (row in 0 until 3) {
+        for (col in 0 until 3) {
+            positions[row * 3 + col] = Offset(
+                x = col * cellW + cellW / 2f,
+                y = row * cellH + cellH / 2f,
+            )
+        }
+    }
+    return positions
 }
 
 private fun locatePatternDot(

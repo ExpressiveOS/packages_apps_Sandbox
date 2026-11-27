@@ -17,17 +17,20 @@
 
 package com.android.axion.sandbox.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.Pattern
@@ -39,10 +42,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -53,6 +52,7 @@ import com.android.axion.compose.expressive.ExpressiveShapePreset
 import com.android.axion.compose.expressive.rememberExpressiveHaptics
 import com.android.axion.compose.preferences.ClickablePreference
 import com.android.axion.compose.preferences.PreferenceGroup
+import com.android.axion.compose.scaffold.AxionScaffold
 import com.android.axion.sandbox.R
 import com.android.axion.sandbox.security.SecurityType
 
@@ -60,119 +60,128 @@ import com.android.axion.sandbox.security.SecurityType
 fun SecuritySetupScreen(
     onSecurityTypeSelected: (SecurityType) -> Unit,
     onSkip: () -> Unit = {},
+    onBack: () -> Unit = onSkip,
     showSkip: Boolean = true,
 ) {
     val haptics = rememberExpressiveHaptics()
-    var emblemActive by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+    AxionScaffold(
+        title = stringResource(R.string.app_name),
+        onBackClick = onBack,
+        collapsedByDefault = true,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) { paddingValues ->
+        Box(
             modifier = Modifier
-                .padding(32.dp)
-                .widthIn(max = 420.dp),
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(paddingValues)
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            ExpressiveMorphContainer(
-                active = emblemActive,
-                inactivePreset = ExpressiveShapePreset.COOKIE_7,
-                activePreset = ExpressiveShapePreset.SOFT_BURST,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                onClick = { emblemActive = !emblemActive },
-                modifier = Modifier.size(84.dp),
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .widthIn(max = 420.dp)
+                    .fillMaxWidth(),
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.Security,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp),
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = stringResource(R.string.setup_title),
-                style = MaterialTheme.typography.headlineMediumEmphasized,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = stringResource(R.string.setup_description),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-
-            Spacer(modifier = Modifier.height(36.dp))
-
-            PreferenceGroup {
-                item {
-                    ClickablePreference(
-                        title = stringResource(R.string.setup_pin_title),
-                        summary = stringResource(R.string.setup_pin_description),
-                        icon = Icons.Outlined.Pin,
-                        iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        iconBackgroundColor = MaterialTheme.colorScheme.primaryContainer,
-                        onClick = {
-                            haptics.performConfirm()
-                            onSecurityTypeSelected(SecurityType.PIN)
-                        },
+                ExpressiveMorphContainer(
+                    active = false,
+                    inactivePreset = ExpressiveShapePreset.COOKIE_7,
+                    activePreset = ExpressiveShapePreset.COOKIE_7,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(84.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Security,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
                     )
                 }
-                item {
-                    ClickablePreference(
-                        title = stringResource(R.string.setup_password_title),
-                        summary = stringResource(R.string.setup_password_description),
-                        icon = Icons.Outlined.Password,
-                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        iconBackgroundColor = MaterialTheme.colorScheme.secondaryContainer,
-                        onClick = {
-                            haptics.performConfirm()
-                            onSecurityTypeSelected(SecurityType.PASSWORD)
-                        },
-                    )
-                }
-                item {
-                    ClickablePreference(
-                        title = stringResource(R.string.setup_pattern_title),
-                        summary = stringResource(R.string.setup_pattern_description),
-                        icon = Icons.Outlined.Pattern,
-                        iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                        iconBackgroundColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        onClick = {
-                            haptics.performConfirm()
-                            onSecurityTypeSelected(SecurityType.PATTERN)
-                        },
-                    )
-                }
-            }
 
-            if (showSkip) {
                 Spacer(modifier = Modifier.height(24.dp))
 
-                OutlinedButton(
-                    onClick = {
-                        haptics.performStepTick()
-                        onSkip()
-                    },
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.action_skip),
-                        style = MaterialTheme.typography.labelLargeEmphasized,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Text(
+                    text = stringResource(R.string.setup_title),
+                    style = MaterialTheme.typography.headlineMediumEmphasized,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = stringResource(R.string.setup_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                PreferenceGroup {
+                    item {
+                        ClickablePreference(
+                            title = stringResource(R.string.setup_pin_title),
+                            summary = stringResource(R.string.setup_pin_description),
+                            icon = Icons.Outlined.Pin,
+                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            iconBackgroundColor = MaterialTheme.colorScheme.primaryContainer,
+                            onClick = {
+                                haptics.performConfirm()
+                                onSecurityTypeSelected(SecurityType.PIN)
+                            },
+                        )
+                    }
+                    item {
+                        ClickablePreference(
+                            title = stringResource(R.string.setup_password_title),
+                            summary = stringResource(R.string.setup_password_description),
+                            icon = Icons.Outlined.Password,
+                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            iconBackgroundColor = MaterialTheme.colorScheme.secondaryContainer,
+                            onClick = {
+                                haptics.performConfirm()
+                                onSecurityTypeSelected(SecurityType.PASSWORD)
+                            },
+                        )
+                    }
+                    item {
+                        ClickablePreference(
+                            title = stringResource(R.string.setup_pattern_title),
+                            summary = stringResource(R.string.setup_pattern_description),
+                            icon = Icons.Outlined.Pattern,
+                            iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            iconBackgroundColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            onClick = {
+                                haptics.performConfirm()
+                                onSecurityTypeSelected(SecurityType.PATTERN)
+                            },
+                        )
+                    }
+                }
+
+                if (showSkip) {
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            haptics.performStepTick()
+                            onSkip()
+                        },
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.action_skip),
+                            style = MaterialTheme.typography.labelLargeEmphasized,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
